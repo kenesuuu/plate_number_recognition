@@ -4,14 +4,14 @@ from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import numpy as np
 import easyocr
-import os
-reader = easyocr.Reader(['en'], gpu=True)
+import os  # Import os module to handle file operations
+
 # Load the pre-trained Haar cascade classifier for license plate detection
 n_plate_detector = cv2.CascadeClassifier("C:/Users/Caffiene/Documents/11PlateNumber/plate_number_recognition/model/haarcascade_russian_plate_number.xml")
 
 class CameraThread(QThread):
     frame_available = pyqtSignal(np.ndarray)
-    frame_skip = 10 # Process every 10th frame
+    frame_skip = 5 # Process every 5th frame
 
     def __init__(self, video_source):
         super().__init__()
@@ -32,27 +32,6 @@ class CameraThread(QThread):
         self.wait()
         self.cap.release()
 
-class OCRThread(QThread):
-    result_signal = pyqtSignal(str)
-
-    def __init__(self, plate_region):
-        super().__init__()
-        self.plate_region = plate_region
-        self.reader = easyocr.Reader(['en'], gpu=True) # Initialize OCR reader with GPU support
-
-    def run(self):
-        plate_text = self.read_license_plate(self.plate_region)
-        self.result_signal.emit(plate_text)
-
-    def read_license_plate(self, plate_region):
-        gray_plate = cv2.cvtColor(plate_region, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray_plate, 150, 255, cv2.THRESH_BINARY_INV)
-        plate_text = self.reader.readtext(thresh, detail=0, paragraph=False)
-        if plate_text:
-            return plate_text[0][-2] # Assuming the first recognized text is the license plate number
-        else:
-            return "Not Recognized"
-
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -70,8 +49,9 @@ class MainWindow(QMainWindow):
         self.record_button.clicked.connect(self.record_details)
         widget.setLayout(layout)
         self.camera_thread = None
+        self.reader = easyocr.Reader(['en'], gpu=True) # Initialize OCR reader with GPU support
         self.recorded_details = []
-        self.save_folder = "recorded_details"
+        self.save_folder = "recorded_details"  # Folder name to save recorded details
 
         # Create the save folder if it doesn't exist
         if not os.path.exists(self.save_folder):
@@ -92,31 +72,38 @@ class MainWindow(QMainWindow):
 
         for (x, y, w, h) in detections:
             plate_region = frame[y:y + h, x:x + w] # Extract license plate region
-            ocr_thread = OCRThread(plate_region)
-            ocr_thread.result_signal.connect(self.handle_ocr_result)
-            ocr_thread.start()
+            plate_text = self.read_license_plate(plate_region) # Read license plate text
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 255), 2)
+            cv2.putText(frame, plate_text, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
+            # Store detected plate details
+            self.recorded_details.append((plate_text, plate_region.copy()))
 
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         convertToQtFormat = QImage(rgb_frame.data, rgb_frame.shape[1], rgb_frame.shape[0], QImage.Format_RGB888)
         p = convertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
         self.label_preview.setPixmap(QPixmap.fromImage(p))
 
-    def handle_ocr_result(self, plate_text):
-        # Assuming this method is called with the plate text as an argument
-        # You can now handle the OCR result, e.g., display it or store it
-        print(f"Plate Text: {plate_text}")
+    def read_license_plate(self, plate_region):
+        gray_plate = cv2.cvtColor(plate_region, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray_plate, 150, 255, cv2.THRESH_BINARY_INV)
+        plate_text = self.reader.readtext(thresh, detail=0, paragraph=False)
+        if plate_text:
+            return plate_text[0][-2] # Assuming the first recognized text is the license plate number
+        else:
+            return "Not Recognized"
 
     def record_details(self):
         if self.recorded_details:
             for i, (plate_text, plate_region) in enumerate(self.recorded_details):
-                cv2.imwrite(f"{self.save_folder}/detected_plate_{i}.jpg", plate_region)
-                print(f"Plate Number: {plate_text} - Details saved as detected_plate_{i}.jpg")
+                filename = os.path.join(self.save_folder, f"detected_plate_{i}.jpg")
+                cv2.imwrite(filename, plate_region)
+                print(f"Plate Number: {plate_text} - Details saved as {filename}")
 
     def closeEvent(self, event):
         if self.camera_thread:
             self.camera_thread.stop()
         # Close any other resources here
-        event.accept()
 
 if __name__ == "__main__":
     app = QApplication([])
