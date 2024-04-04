@@ -1,6 +1,21 @@
 import cv2
 import tkinter as tk
 from PIL import Image, ImageTk
+import easyocr
+import cv2
+import os
+from os import listdir
+from pathlib import Path
+from PyQt5 import QtWidgets, QtGui, QtCore
+from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QLabel, QWidget, QSpacerItem
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtGui import *
+from PyQt5.QtWidgets import *
+from PyQt5.QtCore import *
+import sys
+import numpy as np
+import time
 
 # Function to start the OpenCV script
 def start_opencv():
