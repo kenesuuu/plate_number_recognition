@@ -5,13 +5,17 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import numpy as np
 import easyocr
 import os
-reader = easyocr.Reader(['en'], gpu=True)
+import torch
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # Load the pre-trained Haar cascade classifier for license plate detection
 n_plate_detector = cv2.CascadeClassifier("C:/Users/Caffiene/Documents/11PlateNumber/plate_number_recognition/model/haarcascade_russian_plate_number.xml")
 
+
 class CameraThread(QThread):
     frame_available = pyqtSignal(np.ndarray)
-    frame_skip = 10 # Process every 10th frame
+    frame_skip = 3 # Process every 10th frame
 
     def __init__(self, video_source):
         super().__init__()
@@ -67,15 +71,30 @@ class MainWindow(QMainWindow):
         self.start_button.clicked.connect(self.start_camera)
         self.record_button = QPushButton("Record Details")
         layout.addWidget(self.record_button)
-        self.record_button.clicked.connect(self.record_details)
+        self.record_button.clicked.connect(self.recorded_details) # Corrected method name
         widget.setLayout(layout)
         self.camera_thread = None
         self.recorded_details = []
         self.save_folder = "recorded_details"
+        # Create the save folder if it doesn't exist
+        if not os.path.exists(self.save_folder):
+            os.makedirs(self.save_folder)
+
+    def handle_ocr_result(self, plate_text):
+            # Assuming this method is called with the plate text as an argument
+            # You can now handle the OCR result, e.g., display it or store it
+            print(f"Plate Text: {plate_text}")
+
+    def recorded_details(self):
+        if self.recorded_details:
+            for i, (plate_text, plate_region) in enumerate(self.recorded_details):
+                cv2.imwrite(f"{self.save_folder}/detected_plate_{i}.jpg", plate_region)
+                print(f"Plate Number: {plate_text} - Details saved as detected_plate_{i}.jpg")
 
         # Create the save folder if it doesn't exist
         if not os.path.exists(self.save_folder):
             os.makedirs(self.save_folder)
+            
 
     def start_camera(self):
         video_source = 0 # Use 0 for default camera, you can change it to file path for video files
@@ -92,7 +111,9 @@ class MainWindow(QMainWindow):
 
         for (x, y, w, h) in detections:
             plate_region = frame[y:y + h, x:x + w] # Extract license plate region
-            ocr_thread = OCRThread(plate_region)
+            # Convert the plate_region to a PyTorch tensor and move it to the same device as the model
+            plate_region_tensor = torch.from_numpy(plate_region).to(device)
+            ocr_thread = OCRThread(plate_region_tensor) # Pass the tensor to the OCRThread
             ocr_thread.result_signal.connect(self.handle_ocr_result)
             ocr_thread.start()
 
@@ -100,17 +121,6 @@ class MainWindow(QMainWindow):
         convertToQtFormat = QImage(rgb_frame.data, rgb_frame.shape[1], rgb_frame.shape[0], QImage.Format_RGB888)
         p = convertToQtFormat.scaled(640, 480, Qt.KeepAspectRatio)
         self.label_preview.setPixmap(QPixmap.fromImage(p))
-
-    def handle_ocr_result(self, plate_text):
-        # Assuming this method is called with the plate text as an argument
-        # You can now handle the OCR result, e.g., display it or store it
-        print(f"Plate Text: {plate_text}")
-
-    def record_details(self):
-        if self.recorded_details:
-            for i, (plate_text, plate_region) in enumerate(self.recorded_details):
-                cv2.imwrite(f"{self.save_folder}/detected_plate_{i}.jpg", plate_region)
-                print(f"Plate Number: {plate_text} - Details saved as detected_plate_{i}.jpg")
 
     def closeEvent(self, event):
         if self.camera_thread:
