@@ -9,7 +9,7 @@ import torch
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load the pre-trained Haar cascade classifier for license plate detection
-n_plate_detector = cv2.CascadeClassifier("C:/Users/Caffiene/Documents/11PlateNumber/plate_number_recognition/model/haarcascade_russian_plate_number.xml")
+n_plate_detector = cv2.CascadeClassifier("C:/Users/Caffiene/Documents/11PlateNumber/plate_number_recognition/model/model.xml")
 
 class MainWindow(QMainWindow):
     def __init__(self):
